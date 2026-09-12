@@ -33,8 +33,9 @@ projects/<name>/              (gitignored)
 ```
 
 `chapters[i]` belongs to segment `i` whose bounds are `[0, ...splits, duration][i..i+1]`.
-`name: null` means "use the default `chapterN`", resolved at export so numbering stays
-correct when splits are inserted. `start`/`end` are absolute trims inside the segment.
+`name: null` means "use the default name `chapter`" (the export prefix carries the number).
+`start`/`end` are absolute trims inside the segment. `enabled: false` excludes a chapter from
+export and greys it out; a missing flag means enabled. Only exported chapters are numbered.
 
 Export filenames are `<n> <name>.aac`, `n` zero-padded only when there are 10+ chapters.
 
@@ -53,6 +54,9 @@ Export filenames are `<n> <name>.aac`, `n` zero-padded only when there are 10+ c
   Clear all ask for confirmation when any chapter has a custom name or trim.
 - Trimmed audio is dropped, never handed to the neighbouring chapter.
 - Clicking a split or a trim handle always moves the playhead there, so space plays from it.
+- Each chapter card has one Play button. Playing or clicking inside a chapter timeline arms
+  `stopAt` = that chapter's end; playback never rolls into the next chapter. Seeking in the
+  main timeline clears it. Opening a modal or focusing a text field pauses playback.
 - Zoom is pinch only (ctrl+wheel). Plain vertical scroll scrolls the page; horizontal swipe or
   shift+scroll pans. Zoom buttons and +/- keys zoom around the playhead.
 - Every action has a button; shortcuts are printed on the buttons. Undo is a stack of full
