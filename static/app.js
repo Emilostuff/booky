@@ -277,6 +277,7 @@ main.cv.addEventListener('pointerdown', e => {
   const x = e.offsetX, hit = hitSplit(x);
   if (hit >= 0) {
     sel = hit; drag = { idx: hit, moved: false, pre: JSON.stringify(S) };
+    seek(S.splits[hit]);
     main.cv.setPointerCapture(e.pointerId);
   } else {
     sel = -1; seek(main.tOf(x));
@@ -288,6 +289,7 @@ main.cv.addEventListener('pointermove', e => {
   if (drag) {
     S.splits[drag.idx] = clamp(main.tOf(e.offsetX), 0.05, P.duration - 0.05);
     drag.moved = true;
+    audio.currentTime = S.splits[drag.idx];
     drawMain();
   } else {
     main.cv.style.cursor = hitSplit(e.offsetX) >= 0 ? 'ew-resize' : 'crosshair';
@@ -406,7 +408,7 @@ function makeCard(i) {
   };
   cv.addEventListener('pointerdown', e => {
     const hnd = hitHandle(e.offsetX);
-    if (hnd) { pushUndo(); dragging = hnd; cv.setPointerCapture(e.pointerId); }
+    if (hnd) { pushUndo(); dragging = hnd; seek(S.chapters[i][hnd]); cv.setPointerCapture(e.pointerId); }
     else seek(wave.tOf(e.offsetX));
     card.draw();
   });
@@ -415,6 +417,7 @@ function makeCard(i) {
       const cur = S.chapters[i], t = wave.tOf(e.offsetX);
       if (dragging === 'start') cur.start = clamp(t, lo, cur.end - 0.1);
       else cur.end = clamp(t, cur.start + 0.1, hi);
+      audio.currentTime = cur[dragging];
       card.redraw();
     } else {
       cv.style.cursor = hitHandle(e.offsetX) ? 'ew-resize' : 'default';
@@ -558,6 +561,15 @@ $('zoomfit').onclick = () => { main.fit(); drawMain(); };
 
 $('gap').oninput = e => { S.gap = +e.target.value; $('gapv').textContent = S.gap.toFixed(1) + 's'; };
 $('noise').oninput = e => { S.noise = +e.target.value; $('noisev').textContent = S.noise + 'dB'; };
+
+$('clearsplits').onclick = async () => {
+  if (!S.splits.length) return;
+  const ok = await confirmAsk('Remove all splits?',
+    'The whole book becomes one chapter. Names and trims are reset. You can undo this.', 'Remove all', 'danger');
+  if (!ok) return;
+  mutateSplits(() => { S.splits = []; });
+  sel = -1; render(false);
+};
 
 $('redetect').onclick = async () => {
   if (hasDownstreamWork()) {
