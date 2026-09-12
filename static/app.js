@@ -183,7 +183,7 @@ class Wave {
     const c = this.ctx, span = this.view[1] - this.view[0];
     const steps = [0.1, 0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 900, 1800, 3600];
     const step = steps.find(s => span / s <= this.w / 70) || 3600;
-    c.fillStyle = '#5a6272'; c.font = '10px ui-monospace, monospace'; c.textBaseline = 'bottom';
+    c.fillStyle = TH.tick; c.font = '10px ui-monospace, monospace'; c.textBaseline = 'bottom';
     for (let t = Math.ceil(this.view[0] / step) * step; t <= this.view[1]; t += step) {
       const x = this.xOf(t);
       c.fillRect(x, this.h - 6, 1, 6);
@@ -193,28 +193,40 @@ class Wave {
   drawPlayhead(t) {
     if (!this.contains(t)) return;
     const c = this.ctx, x = this.xOf(t);
-    c.strokeStyle = '#4ec9a0'; c.lineWidth = 1.5;
+    c.strokeStyle = TH.ok; c.lineWidth = 1.5;
     c.beginPath(); c.moveTo(x, 0); c.lineTo(x, this.h); c.stroke();
   }
   drawShade(t0, t1, color) {
     const x0 = clamp(this.xOf(t0), 0, this.w), x1 = clamp(this.xOf(t1), 0, this.w);
     if (x1 > x0) { this.ctx.fillStyle = color; this.ctx.fillRect(x0, 0, x1 - x0, this.h); }
   }
-  // wheel: pinch / plain wheel zooms around the cursor, shift or horizontal pans
+  // wheel: pinch zooms around the cursor, horizontal swipe / shift+wheel pans,
+  // plain vertical scrolling is left to the page
   attachWheel(after) {
     this.cv.addEventListener('wheel', e => {
       if (!P?.analyzed) return;
-      e.preventDefault();
       const span = this.view[1] - this.view[0];
-      if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        this.zoomAt(this.tOf(e.offsetX), Math.exp(e.deltaY * 0.012));
+      } else if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+        e.preventDefault();
         this.pan((e.shiftKey ? e.deltaY : e.deltaX) / this.w * span * 1.5);
-      } else {
-        this.zoomAt(this.tOf(e.offsetX), Math.exp(e.deltaY * 0.0025));
-      }
+      } else return;
       after();
     }, { passive: false });
   }
 }
+
+// canvas colours follow the CSS theme
+let TH = {};
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  const v = n => cs.getPropertyValue(n).trim();
+  TH = { wave: v('--wave'), wave2: v('--wave2'), tick: v('--tick'), shade: v('--shade'),
+         tint: v('--tint'), mark: v('--mark'), sel: v('--sel'), ok: v('--ok') };
+}
+readTheme();
 
 // --------------------------------------------------------------- main timeline
 
@@ -234,13 +246,13 @@ function drawMain() {
 
   const b = bounds();
   for (let i = 0; i < b.length - 1; i++) {
-    if (i % 2 === 0) main.drawShade(b[i], b[i + 1], 'rgba(110,168,254,.06)');
+    if (i % 2 === 0) main.drawShade(b[i], b[i + 1], TH.tint);
   }
-  main.drawWave('#3f4a5f', h / 2, h / 2 - 16);
+  main.drawWave(TH.wave, h / 2, h / 2 - 16);
   // trimmed-away audio, painted over the wave
   S.chapters.forEach((ch, i) => {
-    main.drawShade(b[i], ch.start, 'rgba(0,0,0,.5)');
-    main.drawShade(ch.end, b[i + 1], 'rgba(0,0,0,.5)');
+    main.drawShade(b[i], ch.start, TH.shade);
+    main.drawShade(ch.end, b[i + 1], TH.shade);
   });
   main.drawTicks();
 
@@ -248,7 +260,7 @@ function drawMain() {
     const x = main.xOf(t);
     if (x < -2 || x > w + 2) return;
     const on = i === sel;
-    c.strokeStyle = on ? '#ffd166' : '#ff6b6b'; c.lineWidth = on ? 2.5 : 1.5;
+    c.strokeStyle = on ? TH.sel : TH.mark; c.lineWidth = on ? 2.5 : 1.5;
     c.beginPath(); c.moveTo(x, 0); c.lineTo(x, h); c.stroke();
     c.fillStyle = c.strokeStyle;
     c.fillRect(x - 5, 0, 10, 6);
@@ -348,6 +360,7 @@ function makeCard(i) {
       <button data-a="end" title="play the last 3 seconds">▶︎ end</button>
       <button data-a="all" title="play the whole chapter">▶︎ chapter</button>
       <button data-a="reset" title="remove trims">reset trim</button>
+      <button data-a="fit" title="show the whole chapter">fit</button>
       <div class="spacer"></div>
       <span class="t"></span>
     </div>`;
@@ -368,14 +381,14 @@ function makeCard(i) {
     const c = wave.ctx, w = wave.w, h = wave.h, cur = S.chapters[i];
     if (!w) return;
     c.clearRect(0, 0, w, h);
-    wave.drawWave('#4a5670', h / 2, h / 2 - 12);
-    wave.drawShade(lo, cur.start, 'rgba(0,0,0,.6)');
-    wave.drawShade(cur.end, hi, 'rgba(0,0,0,.6)');
+    wave.drawWave(TH.wave2, h / 2, h / 2 - 12);
+    wave.drawShade(lo, cur.start, TH.shade);
+    wave.drawShade(cur.end, hi, TH.shade);
     wave.drawTicks();
     for (const [t, side] of [[cur.start, 1], [cur.end, -1]]) {
       const x = wave.xOf(t);
       if (x < -8 || x > w + 8) continue;
-      c.fillStyle = '#ffd166';
+      c.fillStyle = TH.sel;
       c.fillRect(x - 1, 0, 2, h);
       c.fillRect(side > 0 ? x : x - 6, h / 2 - 12, 6, 24);
     }
@@ -428,6 +441,7 @@ function makeCard(i) {
     else if (a === 'end') playRange(Math.max(cur.start, cur.end - 3), cur.end);
     else if (a === 'all') playRange(cur.start, cur.end);
     else if (a === 'reset') { pushUndo(); cur.start = lo; cur.end = hi; card.redraw(); drawMain(); markDirty(); }
+    else if (a === 'fit') { wave.fit(); card.draw(); }
   });
   return card;
 }
@@ -707,5 +721,19 @@ $('reveal').onclick = () => api('POST', `/api/projects/${encodeURIComponent(P.na
 
 addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
 addEventListener('resize', () => { main.resize(); drawMain(); for (const c of cards) { c.wave.resize(); c.draw(); } });
+
+// ------------------------------------------------------------------- theme
+
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  $('theme').textContent = t === 'light' ? '☾ Dark mode' : '☀ Light mode';
+  try { localStorage.setItem('booky-theme', t); } catch {}
+  readTheme();
+  drawMain(); for (const c of cards) c.draw();
+}
+$('theme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
+let theme = 'dark';
+try { theme = localStorage.getItem('booky-theme') || theme; } catch {}
+applyTheme(theme);
 
 refreshProjects();

@@ -349,7 +349,7 @@ def chapter_filename(raw: str | None, index: int, used: set[str]) -> str:
         cand = f"{base} {n}"
         n += 1
     used.add(cand.lower())
-    return f"{cand}.aac"
+    return f"{index} {cand}.aac"
 
 
 @app.post("/api/projects/{name}/export")
