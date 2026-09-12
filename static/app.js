@@ -399,7 +399,7 @@ function makeCard(i) {
   card.redraw = () => { meta(); card.draw(); };
 
   // trim handles
-  let dragging = null; // 'start' | 'end'
+  let dragging = null, dragPre = null; // 'start' | 'end', snapshot before the drag
   const hitHandle = x => {
     const cur = S.chapters[i];
     const ds = Math.abs(wave.xOf(cur.start) - x), de = Math.abs(wave.xOf(cur.end) - x);
@@ -408,7 +408,7 @@ function makeCard(i) {
   };
   cv.addEventListener('pointerdown', e => {
     const hnd = hitHandle(e.offsetX);
-    if (hnd) { pushUndo(); dragging = hnd; seek(S.chapters[i][hnd]); cv.setPointerCapture(e.pointerId); }
+    if (hnd) { dragPre = JSON.stringify({ S, sel }); dragging = hnd; seek(S.chapters[i][hnd]); cv.setPointerCapture(e.pointerId); }
     else seek(wave.tOf(e.offsetX));
     card.draw();
   });
@@ -428,7 +428,8 @@ function makeCard(i) {
     dragging = null;
     const cur = S.chapters[i];
     cur.start = round3(cur.start); cur.end = round3(cur.end);
-    card.redraw(); drawMain(); markDirty();
+    if (JSON.stringify({ S, sel }) !== dragPre) { undoStack.push(dragPre); if (undoStack.length > 100) undoStack.shift(); }
+    card.redraw(); drawMain(); markDirty(); $('undo').disabled = !undoStack.length;
   });
   wave.attachWheel(card.draw);
 
