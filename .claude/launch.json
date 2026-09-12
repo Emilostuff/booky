@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "booky",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": ["run", "booky.py"],
+      "env": { "BOOKY_NO_BROWSER": "1" },
+      "port": 8765
+    }
+  ]
+}

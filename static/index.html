@@ -1,0 +1,94 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>booky</title>
+<link rel="stylesheet" href="/static/style.css">
+
+<div id="app">
+  <aside id="sidebar">
+    <div class="side-head">
+      <span>Projects</span>
+      <button id="new" title="New project">+</button>
+    </div>
+    <form id="newform" hidden>
+      <input id="newname" placeholder="project name" autocomplete="off">
+      <button type="submit" class="primary">Create</button>
+    </form>
+    <ul id="plist"></ul>
+  </aside>
+
+  <section id="main">
+    <div id="empty">Pick a project on the left, or create one with <b>+</b>.</div>
+
+    <div id="pview" hidden>
+      <header>
+        <h1 id="pname"></h1>
+        <span id="dirty" class="dirty" hidden title="unsaved changes">● unsaved</span>
+        <div class="spacer"></div>
+        <span id="status"></span>
+        <button id="reveal" title="Open the project folder in Finder">Show in Finder</button>
+        <button id="export" class="go" title="Write all chapters to disk">Export</button>
+      </header>
+
+      <div class="step" id="step-source">
+        <h2><span class="num">1</span> Source</h2>
+        <div class="row">
+          <input id="url" class="grow" placeholder="HLS stream url (…/playlist.m3u8)" autocomplete="off">
+          <button id="fetch" class="primary">Fetch</button>
+        </div>
+        <div id="srcinfo" class="hint"></div>
+      </div>
+
+      <div class="step" id="step-split">
+        <h2><span class="num">2</span> Split</h2>
+        <div class="tl-wrap">
+          <canvas id="wave"></canvas>
+          <div class="tl-axis" id="axis"></div>
+        </div>
+        <div class="row toolbar">
+          <button id="play" title="space">▶︎ Play</button>
+          <span id="clock" class="mono">0:00 / 0:00</span>
+          <div class="spacer"></div>
+          <button id="addsplit" title="M">+ Split <kbd>M</kbd></button>
+          <button id="delsplit" title="Backspace" disabled>Delete <kbd>⌫</kbd></button>
+          <button id="undo" title="⌘Z" disabled>Undo <kbd>⌘Z</kbd></button>
+          <span class="sep"></span>
+          <button id="zoomout" title="−">Zoom out <kbd>−</kbd></button>
+          <button id="zoomin" title="+">Zoom in <kbd>+</kbd></button>
+          <button id="zoomfit" title="0">Fit <kbd>0</kbd></button>
+        </div>
+        <div class="row detect">
+          <label class="slider">gap
+            <input type="range" id="gap" min="0.5" max="6" step="0.1" value="2"><b id="gapv">2.0s</b>
+          </label>
+          <label class="slider">silence
+            <input type="range" id="noise" min="-60" max="-10" step="1" value="-35"><b id="noisev">-35dB</b>
+          </label>
+          <button id="redetect">Re-detect</button>
+          <div class="spacer"></div>
+          <span class="count"><b id="scount">0</b> splits · <b id="ccount">0</b> chapters</span>
+        </div>
+        <div class="hint">
+          click to seek · drag a split to move it · double-click a split to remove it ·
+          wheel to zoom around the cursor · shift+wheel or two-finger swipe to pan ·
+          <b>←</b>/<b>→</b> nudge selected split (shift = 0.5s)
+        </div>
+      </div>
+
+      <div class="step" id="step-chapters">
+        <h2><span class="num">3</span> Chapters</h2>
+        <div id="chapters"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div id="modal" hidden>
+  <div class="box">
+    <h3 id="mtitle"></h3>
+    <p id="mtext"></p>
+    <div class="row" id="mbuttons"></div>
+  </div>
+</div>
+
+<audio id="audio" preload="auto"></audio>
+<script src="/static/app.js"></script>
