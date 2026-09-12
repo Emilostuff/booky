@@ -341,7 +341,8 @@ def peaks(name: str):
                     headers={"X-Peaks-Per-Sec": str(PEAKS_PER_SEC)})
 
 
-def chapter_filename(raw: str | None, index: int, used: set[str]) -> str:
+def chapter_filename(raw: str | None, index: int, total: int, used: set[str]) -> str:
+    """'<n> <name>.aac', n zero-padded only when there are 10+ chapters so plain sorts stay in order."""
     base = re.sub(r"\.aac$", "", (raw or "").strip(), flags=re.I)
     base = re.sub(r"[/\\:]+", "-", base).strip(" .") or f"chapter{index}"
     cand, n = base, 2
@@ -349,7 +350,7 @@ def chapter_filename(raw: str | None, index: int, used: set[str]) -> str:
         cand = f"{base} {n}"
         n += 1
     used.add(cand.lower())
-    return f"{index} {cand}.aac"
+    return f"{str(index).zfill(len(str(total)))} {cand}.aac"
 
 
 @app.post("/api/projects/{name}/export")
@@ -384,7 +385,7 @@ async def export(name: str, request: Request):
         dest.mkdir(parents=True)
         used: set[str] = set()
         for i, ch in enumerate(clean):
-            fname = chapter_filename(ch["name"], i + 1, used)
+            fname = chapter_filename(ch["name"], i + 1, len(clean), used)
             log(f"writing {fname} ({i + 1} of {len(clean)})...")
             r = run(["ffmpeg", "-y", "-v", "error", "-i", str(src),
                      "-ss", f"{ch['start']:.3f}", "-to", f"{ch['end']:.3f}",
