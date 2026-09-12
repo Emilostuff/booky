@@ -504,6 +504,16 @@ function renderProject() {
   } else {
     const when = P.fetched_at ? new Date(P.fetched_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : 'earlier';
     info.textContent = `${fmt(P.duration)} of audio, fetched ${when}. Fetching again replaces the source and resets splits and chapters.`;
+    if (P.url) {
+      const line = document.createElement('div');
+      line.className = 'srcurl';
+      line.innerHTML = `<span class="lbl">source</span><code></code><button id="copyurl" title="copy url">copy</button>`;
+      line.querySelector('code').textContent = P.url;
+      line.querySelector('button').onclick = async () => {
+        try { await navigator.clipboard.writeText(P.url); say('url copied'); } catch { say('could not copy', true); }
+      };
+      info.appendChild(line);
+    }
   }
   render();
 }
