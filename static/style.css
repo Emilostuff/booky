@@ -98,6 +98,9 @@ input[type=range] { width: 160px; accent-color: var(--accent); padding: 0; borde
 #chapters { display: grid; gap: 10px; }
 .chap { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .chap.playing { border-color: var(--ok); }
+.chap.off { opacity: .45; }
+.chap.off canvas, .chap.off .tools, .chap.off input.name { pointer-events: none; }
+.chap input.on { width: 16px; height: 16px; padding: 0; margin: 0; accent-color: var(--ok); cursor: pointer; }
 .chap .top { display: flex; gap: 10px; align-items: center; }
 .chap .idx { color: var(--dim); font-size: 12px; min-width: 22px; font-variant-numeric: tabular-nums; }
 .chap input.name { flex: 1; min-width: 120px; background: var(--field2); }

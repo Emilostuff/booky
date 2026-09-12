@@ -212,7 +212,7 @@ def analyze(name: str, log) -> dict:
     bounds = [0.0] + splits + [duration]
     meta.update(
         duration=duration, gap=DEFAULT_GAP, noise=DEFAULT_NOISE, splits=splits,
-        chapters=[{"name": None, "start": bounds[i], "end": bounds[i + 1]}
+        chapters=[{"name": None, "start": bounds[i], "end": bounds[i + 1], "enabled": True}
                   for i in range(len(bounds) - 1)],
     )
     save_meta(name, meta)
@@ -344,7 +344,7 @@ def peaks(name: str):
 def chapter_filename(raw: str | None, index: int, total: int, used: set[str]) -> str:
     """'<n> <name>.aac', n zero-padded only when there are 10+ chapters so plain sorts stay in order."""
     base = re.sub(r"\.aac$", "", (raw or "").strip(), flags=re.I)
-    base = re.sub(r"[/\\:]+", "-", base).strip(" .") or f"chapter{index}"
+    base = re.sub(r"[/\\:]+", "-", base).strip(" .") or "chapter"
     cand, n = base, 2
     while cand.lower() in used:
         cand = f"{base} {n}"
@@ -374,7 +374,11 @@ async def export(name: str, request: Request):
         e = min(max(float(ch.get("end", hi)), lo), hi)
         if e - s < 0.1:
             raise HTTPException(400, f"chapter {i + 1} is too short")
-        clean.append({"name": (ch.get("name") or None), "start": round(s, 3), "end": round(e, 3)})
+        clean.append({"name": (ch.get("name") or None), "start": round(s, 3), "end": round(e, 3),
+                      "enabled": ch.get("enabled") is not False})
+    todo = [ch for ch in clean if ch["enabled"]]
+    if not todo:
+        raise HTTPException(400, "every chapter is turned off")
 
     meta.update(gap=float(body.get("gap", meta["gap"])), noise=float(body.get("noise", meta["noise"])),
                 splits=splits, chapters=clean)
@@ -384,16 +388,16 @@ async def export(name: str, request: Request):
         shutil.rmtree(dest, ignore_errors=True)
         dest.mkdir(parents=True)
         used: set[str] = set()
-        for i, ch in enumerate(clean):
-            fname = chapter_filename(ch["name"], i + 1, len(clean), used)
-            log(f"writing {fname} ({i + 1} of {len(clean)})...")
+        for i, ch in enumerate(todo):
+            fname = chapter_filename(ch["name"], i + 1, len(todo), used)
+            log(f"writing {fname} ({i + 1} of {len(todo)})...")
             r = run(["ffmpeg", "-y", "-v", "error", "-i", str(src),
                      "-ss", f"{ch['start']:.3f}", "-to", f"{ch['end']:.3f}",
                      "-c", "copy", "-f", "adts", str(dest / fname)])
             if r.returncode != 0:
                 raise RuntimeError(f"{fname} failed:\n" + r.stderr.strip()[-500:])
         save_meta(name, meta)
-        return {"count": len(clean), "folder": str(dest)}
+        return {"count": len(todo), "folder": str(dest)}
 
     return {"job": start_job(work)}
 

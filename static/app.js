@@ -63,6 +63,7 @@ function ask(title, text, buttons) {
       el.onclick = () => close(b.value);
       row.appendChild(el);
     }
+    audio.pause();
     $('modal').hidden = false;
     addEventListener('keydown', onKey, true);
     row.lastChild.focus();
@@ -85,11 +86,12 @@ let cards = [];        // chapter cards
 
 const isDirty = () => !!S && JSON.stringify(S) !== saved;
 const bounds = () => [0, ...S.splits, P.duration];
-const defaultName = i => `chapter${i + 1}`;
+const DEFAULT_NAME = 'chapter';
+const isOn = c => c.enabled !== false;
 
 function hasDownstreamWork() {
   const b = bounds();
-  return S.chapters.some((c, i) => c.name || !eq(c.start, b[i]) || !eq(c.end, b[i + 1]));
+  return S.chapters.some((c, i) => c.name || !isOn(c) || !eq(c.start, b[i]) || !eq(c.end, b[i + 1]));
 }
 
 function pushUndo() {
@@ -111,13 +113,13 @@ function reconcile(oldSplits, oldChapters) {
   for (let i = 0; i < nb.length - 1; i++) {
     const lo = nb[i], hi = nb[i + 1];
     let j = oldChapters.findIndex((c, k) => !used.has(k) && (eq(ob[k], lo) || eq(ob[k + 1], hi)));
-    if (j < 0) { out.push({ name: null, start: lo, end: hi }); continue; }
+    if (j < 0) { out.push({ name: null, start: lo, end: hi, enabled: true }); continue; }
     used.add(j);
     const c = oldChapters[j];
     let start = eq(c.start, ob[j]) ? lo : clamp(c.start, lo, hi);
     let end = eq(c.end, ob[j + 1]) ? hi : clamp(c.end, lo, hi);
     if (end - start < 0.1) { start = lo; end = hi; }
-    out.push({ name: c.name, start, end });
+    out.push({ name: c.name, start, end, enabled: isOn(c) });
   }
   S.chapters = out;
 }
@@ -249,8 +251,9 @@ function drawMain() {
     if (i % 2 === 0) main.drawShade(b[i], b[i + 1], TH.tint);
   }
   main.drawWave(TH.wave, h / 2, h / 2 - 16);
-  // trimmed-away audio, painted over the wave
+  // trimmed-away audio and disabled chapters, painted over the wave
   S.chapters.forEach((ch, i) => {
+    if (!isOn(ch)) { main.drawShade(b[i], b[i + 1], TH.shade); return; }
     main.drawShade(b[i], ch.start, TH.shade);
     main.drawShade(ch.end, b[i + 1], TH.shade);
   });
@@ -351,16 +354,15 @@ function makeCard(i) {
   el.className = 'chap';
   el.innerHTML = `
     <div class="top">
+      <input type="checkbox" class="on" title="include in export" ${isOn(ch) ? 'checked' : ''}>
       <span class="idx">${i + 1}</span>
-      <input class="name" placeholder="${defaultName(i)}" value="${ch.name ? ch.name.replace(/"/g, '&quot;') : ''}">
+      <input class="name" placeholder="${DEFAULT_NAME}" value="${ch.name ? ch.name.replace(/"/g, '&quot;') : ''}">
       <span class="ext">.aac</span>
       <span class="meta"></span>
     </div>
     <canvas></canvas>
     <div class="tools">
-      <button data-a="start" title="play the first 3 seconds">▶︎ start</button>
-      <button data-a="end" title="play the last 3 seconds">▶︎ end</button>
-      <button data-a="all" title="play the whole chapter">▶︎ chapter</button>
+      <button data-a="play" class="cplay" title="play this chapter from the playhead, stops at its end">▶︎ Play</button>
       <button data-a="reset" title="remove trims">reset trim</button>
       <button data-a="fit" title="show the whole chapter">fit</button>
       <div class="spacer"></div>
@@ -369,6 +371,7 @@ function makeCard(i) {
   const cv = el.querySelector('canvas'), wave = new Wave(cv, lo, hi);
   wave.minSpan = 0.5;
   const card = { el, wave, i, lo, hi };
+  el.classList.toggle('off', !isOn(ch));
 
   const meta = () => {
     const c = S.chapters[i];
@@ -410,6 +413,7 @@ function makeCard(i) {
     const hnd = hitHandle(e.offsetX);
     if (hnd) { dragPre = JSON.stringify({ S, sel }); dragging = hnd; seek(S.chapters[i][hnd]); cv.setPointerCapture(e.pointerId); }
     else seek(wave.tOf(e.offsetX));
+    stopAt = S.chapters[i].end;
     card.draw();
   });
   cv.addEventListener('pointermove', e => {
@@ -438,12 +442,20 @@ function makeCard(i) {
     S.chapters[i].name = e.target.value.trim() || null;
     markDirty();
   });
+  el.querySelector('.on').addEventListener('change', e => {
+    pushUndo();
+    S.chapters[i].enabled = e.target.checked;
+    el.classList.toggle('off', !e.target.checked);
+    drawMain(); markDirty(); updateCounts();
+  });
   el.querySelector('.tools').addEventListener('click', e => {
     const a = e.target.dataset.a, cur = S.chapters[i];
     if (!a) return;
-    if (a === 'start') playRange(cur.start, Math.min(cur.end, cur.start + 3));
-    else if (a === 'end') playRange(Math.max(cur.start, cur.end - 3), cur.end);
-    else if (a === 'all') playRange(cur.start, cur.end);
+    if (a === 'play') {
+      if (!audio.paused && lastCard === i) { audio.pause(); return; }
+      const t = audio.currentTime;
+      playRange(t >= cur.start && t < cur.end - 0.05 ? t : cur.start, cur.end);
+    }
     else if (a === 'reset') { pushUndo(); cur.start = lo; cur.end = hi; card.redraw(); drawMain(); markDirty(); }
     else if (a === 'fit') { wave.fit(); card.draw(); }
   });
@@ -477,10 +489,15 @@ function markDirty() {
   document.title = (d ? '● ' : '') + 'booky' + (P ? ' – ' + P.name : '');
 }
 
+function updateCounts() {
+  $('scount').textContent = S.splits.length;
+  const off = S.chapters.filter(c => !isOn(c)).length;
+  $('ccount').textContent = S.chapters.length + (off ? ` (${off} off)` : '');
+}
+
 function render(rebuildCards = true) {
   if (!S) return;
-  $('scount').textContent = S.splits.length;
-  $('ccount').textContent = S.splits.length + 1;
+  updateCounts();
   $('gap').value = S.gap; $('gapv').textContent = (+S.gap).toFixed(1) + 's';
   $('noise').value = S.noise; $('noisev').textContent = S.noise + 'dB';
   $('delsplit').disabled = sel < 0;
@@ -525,6 +542,10 @@ function renderProject() {
 // -------------------------------------------------------------------- tick
 
 let lastCard = -1;
+function setCardPlay(i, on) {
+  const b = cards[i]?.el.querySelector('.cplay');
+  if (b) b.textContent = on ? '❚❚ Pause' : '▶︎ Play';
+}
 function tick() {
   if (P?.analyzed && S) {
     const t = audio.currentTime || 0;
@@ -538,8 +559,8 @@ function tick() {
     const b = bounds();
     let cur = 0;
     while (cur < b.length - 2 && t >= b[cur + 1]) cur++;
-    if (lastCard >= 0 && lastCard !== cur && cards[lastCard]) { cards[lastCard].el.classList.remove('playing'); cards[lastCard].draw(); }
-    if (cards[cur]) { cards[cur].el.classList.toggle('playing', !audio.paused); cards[cur].draw(); }
+    if (lastCard >= 0 && lastCard !== cur && cards[lastCard]) { cards[lastCard].el.classList.remove('playing'); cards[lastCard].draw(); setCardPlay(lastCard, false); }
+    if (cards[cur]) { cards[cur].el.classList.toggle('playing', !audio.paused); cards[cur].draw(); setCardPlay(cur, !audio.paused); }
     lastCard = cur;
   }
   requestAnimationFrame(tick);
@@ -548,7 +569,7 @@ requestAnimationFrame(tick);
 
 // ------------------------------------------------------------------ actions
 
-function togglePlay() { stopAt = null; audio.paused ? audio.play() : audio.pause(); }
+function togglePlay() { audio.paused ? audio.play() : audio.pause(); }
 audio.onplay = () => $('play').textContent = '❚❚ Pause';
 audio.onpause = () => $('play').textContent = '▶︎ Play';
 
@@ -742,6 +763,7 @@ async function exportProject() {
 $('export').onclick = exportProject;
 $('reveal').onclick = () => api('POST', `/api/projects/${encodeURIComponent(P.name)}/reveal`);
 
+addEventListener('focusin', e => { if (/input|textarea/i.test(e.target.tagName) && e.target.type !== 'checkbox' && e.target.type !== 'range') audio.pause(); });
 addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
 addEventListener('resize', () => { main.resize(); drawMain(); for (const c of cards) { c.wave.resize(); c.draw(); } });
 
