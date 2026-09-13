@@ -89,7 +89,7 @@ const isDirty = () => !!S && JSON.stringify(S) !== saved;
 const bounds = () => [0, ...S.splits, P.duration];
 const DEFAULT_NAME = 'chapter';
 const HUES = [210, 28, 150, 285, 48, 340, 185, 100, 250, 15];
-const segColor = (i, a = 1) => `hsl(${HUES[i % HUES.length]} 70% 55% / ${a})`;
+const segColor = (i, a = 1) => `hsl(${HUES[i % HUES.length]} ${TH.segs || '70%'} ${TH.segl || '58%'} / ${a})`;
 const isOn = c => c.enabled !== false;
 
 function hasDownstreamWork() {
@@ -171,11 +171,12 @@ class Wave {
   fit() { this.view = [this.lo, this.hi]; }
   contains(t) { return t >= this.view[0] && t <= this.view[1]; }
 
-  drawWave(color = '#3f4a5f', mid = this.h / 2, amp = this.h / 2 - 8) {
+  drawWave(color, mid = this.h / 2, amp = this.h / 2 - 8, t0 = -Infinity, t1 = Infinity) {
     if (!peaks) return;
     const c = this.ctx;
     c.fillStyle = color;
-    for (let x = 0; x < this.w; x++) {
+    const x0 = Math.max(0, Math.floor(this.xOf(t0))), x1 = Math.min(this.w, Math.ceil(this.xOf(t1)));
+    for (let x = x0; x < x1; x++) {
       const a = Math.max(0, Math.floor(this.tOf(x) * pps));
       const b = Math.min(peaks.length, Math.max(a + 1, Math.floor(this.tOf(x + 1) * pps)));
       let v = 0;
@@ -229,7 +230,8 @@ function readTheme() {
   const cs = getComputedStyle(document.documentElement);
   const v = n => cs.getPropertyValue(n).trim();
   TH = { wave: v('--wave'), wave2: v('--wave2'), tick: v('--tick'), shade: v('--shade'),
-         tint: v('--tint'), mark: v('--mark'), sel: v('--sel'), ok: v('--ok') };
+         tint: v('--tint'), mark: v('--mark'), sel: v('--sel'), ok: v('--ok'),
+         segs: v('--seg-s'), segl: v('--seg-l') };
 }
 readTheme();
 
@@ -250,8 +252,10 @@ function drawMain() {
   if (!P?.analyzed) return;
 
   const b = bounds();
-  for (let i = 0; i < b.length - 1; i++) main.drawShade(b[i], b[i + 1], segColor(i, 0.13));
-  main.drawWave(TH.wave, h / 2, h / 2 - 16);
+  for (let i = 0; i < b.length - 1; i++) {
+    main.drawShade(b[i], b[i + 1], segColor(i, 0.1));
+    main.drawWave(segColor(i), h / 2, h / 2 - 16, b[i], b[i + 1]);
+  }
   if (performance.now() < showNoise) {
     // silence threshold: peaks are scaled so 255 = the loudest sample (peak_db dBFS)
     const ratio = Math.pow(10, (S.noise - (P.peak_db ?? 0)) / 20), amp = (h / 2 - 16) * Math.min(1, ratio);
@@ -397,7 +401,7 @@ function makeCard(i) {
     const c = wave.ctx, w = wave.w, h = wave.h, cur = S.chapters[i];
     if (!w) return;
     c.clearRect(0, 0, w, h);
-    wave.drawWave(TH.wave2, h / 2, h / 2 - 12);
+    wave.drawWave(segColor(i), h / 2, h / 2 - 12);
     wave.drawShade(lo, cur.start, TH.shade);
     wave.drawShade(cur.end, hi, TH.shade);
     wave.drawTicks();
@@ -793,7 +797,7 @@ function applyTheme(t) {
   $('theme').textContent = t === 'light' ? '☾ Dark mode' : '☀ Light mode';
   try { localStorage.setItem('booky-theme', t); } catch {}
   readTheme();
-  drawMain(); for (const c of cards) c.draw();
+  drawMain(); for (const c of cards) { c.el.style.setProperty('--seg', segColor(c.i)); c.draw(); }
 }
 $('theme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light');
 let theme = 'dark';
