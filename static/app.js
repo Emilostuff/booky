@@ -353,6 +353,17 @@ function nudgeSplit(dt) {
   render(false);
 }
 
+// jump the playhead to the previous / next split (or the start / end of the book)
+function jumpSplit(dir) {
+  const t = audio.currentTime, stops = bounds();
+  const target = dir > 0 ? stops.find(s => s > t + 0.01) : [...stops].reverse().find(s => s < t - 0.01);
+  if (target === undefined) return;
+  seek(target);
+  sel = S.splits.indexOf(target);
+  if (!main.contains(target)) { const span = main.view[1] - main.view[0]; main.view = [target - span / 2, target + span / 2]; main.clampView(); }
+  render(false);
+}
+
 function zoomMain(f) {
   const t = audio.currentTime || 0;
   main.zoomAt(t, f);
@@ -640,8 +651,8 @@ addEventListener('keydown', e => {
   else if (k === 'ArrowLeft' || k === 'ArrowRight') {
     e.preventDefault();
     const dir = k === 'ArrowLeft' ? -1 : 1;
-    if (sel >= 0) nudgeSplit(dir * (e.shiftKey ? 0.5 : 0.05));
-    else seek(audio.currentTime + dir * (e.shiftKey ? 30 : 5));
+    if (e.shiftKey && sel >= 0) nudgeSplit(dir * 0.05);
+    else jumpSplit(dir);
   } else if (k === 'Escape') { sel = -1; render(false); }
 });
 
