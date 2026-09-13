@@ -5,8 +5,8 @@
       "name": "booky",
       "runtimeExecutable": "uv",
       "runtimeArgs": ["run", "booky.py"],
-      "env": { "BOOKY_NO_BROWSER": "1" },
-      "port": 8765
+      "env": { "BOOKY_NO_BROWSER": "1", "BOOKY_DEV": "1", "BOOKY_PORT": "8766" },
+      "port": 8766
     }
   ]
 }

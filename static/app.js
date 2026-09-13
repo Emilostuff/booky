@@ -76,7 +76,8 @@ const confirmAsk = (title, text, okLabel = 'Continue', cls = 'primary') =>
 // -------------------------------------------------------------------- state
 
 let P = null;          // project as loaded from the server
-let S = null;          // editable state: {gap, noise, splits, chapters}
+let S = null;          // editable state: {gap, noise, splits, chapters, prefix}
+let showNoise = 0;     // timestamp until which the silence threshold line is drawn
 let saved = '';        // JSON of S at last load / export
 let undoStack = [];
 let peaks = null, pps = 100;
@@ -87,6 +88,8 @@ let cards = [];        // chapter cards
 const isDirty = () => !!S && JSON.stringify(S) !== saved;
 const bounds = () => [0, ...S.splits, P.duration];
 const DEFAULT_NAME = 'chapter';
+const HUES = [210, 28, 150, 285, 48, 340, 185, 100, 250, 15];
+const segColor = (i, a = 1) => `hsl(${HUES[i % HUES.length]} 70% 55% / ${a})`;
 const isOn = c => c.enabled !== false;
 
 function hasDownstreamWork() {
@@ -247,10 +250,17 @@ function drawMain() {
   if (!P?.analyzed) return;
 
   const b = bounds();
-  for (let i = 0; i < b.length - 1; i++) {
-    if (i % 2 === 0) main.drawShade(b[i], b[i + 1], TH.tint);
-  }
+  for (let i = 0; i < b.length - 1; i++) main.drawShade(b[i], b[i + 1], segColor(i, 0.13));
   main.drawWave(TH.wave, h / 2, h / 2 - 16);
+  if (performance.now() < showNoise) {
+    // silence threshold: peaks are scaled so 255 = the loudest sample (peak_db dBFS)
+    const ratio = Math.pow(10, (S.noise - (P.peak_db ?? 0)) / 20), amp = (h / 2 - 16) * Math.min(1, ratio);
+    c.strokeStyle = TH.sel; c.lineWidth = 1; c.setLineDash([4, 3]);
+    for (const y of [h / 2 - amp, h / 2 + amp]) { c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke(); }
+    c.setLineDash([]);
+    c.fillStyle = TH.sel; c.font = '11px ui-monospace, monospace'; c.textBaseline = 'bottom';
+    c.fillText(`${S.noise} dB`, 6, h / 2 - amp - 3);
+  }
   // trimmed-away audio and disabled chapters, painted over the wave
   S.chapters.forEach((ch, i) => {
     if (!isOn(ch)) { main.drawShade(b[i], b[i + 1], TH.shade); return; }
@@ -355,7 +365,7 @@ function makeCard(i) {
   el.innerHTML = `
     <div class="top">
       <input type="checkbox" class="on" title="include in export" ${isOn(ch) ? 'checked' : ''}>
-      <span class="idx">${i + 1}</span>
+      <span class="dot"></span>
       <input class="name" placeholder="${DEFAULT_NAME}" value="${ch.name ? ch.name.replace(/"/g, '&quot;') : ''}">
       <span class="ext">.aac</span>
       <span class="meta"></span>
@@ -371,6 +381,7 @@ function makeCard(i) {
   const cv = el.querySelector('canvas'), wave = new Wave(cv, lo, hi);
   wave.minSpan = 0.5;
   const card = { el, wave, i, lo, hi };
+  el.style.setProperty('--seg', segColor(i));
   el.classList.toggle('off', !isOn(ch));
 
   const meta = () => {
@@ -500,6 +511,7 @@ function render(rebuildCards = true) {
   updateCounts();
   $('gap').value = S.gap; $('gapv').textContent = (+S.gap).toFixed(1) + 's';
   $('noise').value = S.noise; $('noisev').textContent = S.noise + 'dB';
+  $('prefix').checked = S.prefix !== false;
   $('delsplit').disabled = sel < 0;
   $('undo').disabled = !undoStack.length;
   if (rebuildCards) renderCards();
@@ -582,7 +594,9 @@ $('zoomout').onclick = () => zoomMain(2);
 $('zoomfit').onclick = () => { main.fit(); drawMain(); };
 
 $('gap').oninput = e => { S.gap = +e.target.value; $('gapv').textContent = S.gap.toFixed(1) + 's'; };
-$('noise').oninput = e => { S.noise = +e.target.value; $('noisev').textContent = S.noise + 'dB'; };
+$('noise').oninput = e => { S.noise = +e.target.value; $('noisev').textContent = S.noise + 'dB'; showNoise = performance.now() + 1500; };
+$('noise').addEventListener('pointerdown', () => { showNoise = Infinity; });
+$('noise').addEventListener('pointerup', () => { showNoise = performance.now() + 1500; });
 
 $('clearsplits').onclick = async () => {
   if (!S.splits.length) return;
@@ -667,7 +681,7 @@ async function openProject(name, force = false) {
   try {
     P = await api('GET', '/api/projects/' + encodeURIComponent(name));
   } catch (err) { say(err.message, true); return; }
-  S = { gap: P.gap, noise: P.noise, splits: P.splits, chapters: P.chapters };
+  S = { gap: P.gap, noise: P.noise, splits: P.splits, chapters: P.chapters, prefix: P.prefix !== false };
   saved = JSON.stringify(S);
   undoStack = []; sel = -1; lastCard = -1; peaks = null;
 
@@ -761,9 +775,14 @@ async function exportProject() {
   finally { $('export').disabled = false; }
 }
 $('export').onclick = exportProject;
+$('prefix').onchange = e => { S.prefix = e.target.checked; markDirty(); };
 $('reveal').onclick = () => api('POST', `/api/projects/${encodeURIComponent(P.name)}/reveal`);
 
 addEventListener('focusin', e => { if (/input|textarea/i.test(e.target.tagName) && e.target.type !== 'checkbox' && e.target.type !== 'range') audio.pause(); });
+// the page itself never zooms: pinch and ⌘± are reserved for the timelines
+addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) addEventListener(ev, e => e.preventDefault());
+addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && ['=', '+', '-', '_', '0'].includes(e.key)) e.preventDefault(); }, true);
 addEventListener('beforeunload', e => { if (isDirty()) { e.preventDefault(); e.returnValue = ''; } });
 addEventListener('resize', () => { main.resize(); drawMain(); for (const c of cards) { c.wave.resize(); c.draw(); } });
 

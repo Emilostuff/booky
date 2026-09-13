@@ -25,10 +25,10 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parent
 PROJECTS = ROOT / "projects"
 STATIC = ROOT / "static"
-PORT = 8765
+PORT = int(os.environ.get("BOOKY_PORT", 8765))
 PEAKS_PER_SEC = 100
 MARKER_BACKOFF = 0.2     # place a split this many seconds before speech resumes
-DEFAULT_GAP = 2.0        # seconds of silence that counts as a chapter break
+DEFAULT_GAP = 3.0        # seconds of silence that counts as a chapter break
 DEFAULT_NOISE = -35.0    # dB below which audio counts as silence
 
 app = FastAPI()
@@ -77,7 +77,7 @@ def meta_path(name: str) -> Path:
 
 def empty_meta(name: str) -> dict:
     return {"name": name, "url": None, "fetched_at": None, "duration": None,
-            "gap": DEFAULT_GAP, "noise": DEFAULT_NOISE, "splits": [], "chapters": []}
+            "gap": DEFAULT_GAP, "noise": DEFAULT_NOISE, "splits": [], "chapters": [], "prefix": True}
 
 
 def load_meta(name: str) -> dict:
@@ -102,6 +102,9 @@ def analyzed(name: str) -> bool:
 
 def describe(name: str) -> dict:
     meta = load_meta(name)
+    if analyzed(name) and "peak_db" not in meta:  # projects indexed before the noise line existed
+        meta["peak_db"] = peak_db(master(name))
+        save_meta(name, meta)
     meta["has_source"] = source_file(name).exists()
     meta["analyzed"] = analyzed(name)
     out = output_dir(name)
@@ -150,6 +153,14 @@ def download(url: str, dest: Path, log) -> None:
     err = proc.stderr.read()
     if proc.returncode != 0 or not dest.exists() or dest.stat().st_size == 0:
         raise RuntimeError("download failed:\n" + err.strip()[-800:])
+
+
+def peak_db(src: Path) -> float | None:
+    """Loudest sample in dBFS, so the UI can draw the silence threshold on the waveform."""
+    r = run(["ffmpeg", "-v", "info", "-nostats", "-i", str(src), "-af", "volumedetect",
+             "-f", "null", "-"])
+    m = re.search(r"max_volume:\s*(-?[\d.]+) dB", r.stderr)
+    return float(m.group(1)) if m else None
 
 
 def compute_peaks(src: Path, duration: float) -> bytes:
@@ -205,9 +216,11 @@ def analyze(name: str, log) -> dict:
     if duration is None:
         raise RuntimeError("could not read duration of master")
     peaks_file(name).write_bytes(compute_peaks(master(name), duration))
+    pk = peak_db(master(name))
 
     log("finding pauses...")
     meta = load_meta(name)
+    meta["peak_db"] = pk
     splits = detect_splits(master(name), duration, DEFAULT_GAP, DEFAULT_NOISE)
     bounds = [0.0] + splits + [duration]
     meta.update(
@@ -341,7 +354,7 @@ def peaks(name: str):
                     headers={"X-Peaks-Per-Sec": str(PEAKS_PER_SEC)})
 
 
-def chapter_filename(raw: str | None, index: int, total: int, used: set[str]) -> str:
+def chapter_filename(raw: str | None, index: int, total: int, used: set[str], prefix: bool = True) -> str:
     """'<n> <name>.aac', n zero-padded only when there are 10+ chapters so plain sorts stay in order."""
     base = re.sub(r"\.aac$", "", (raw or "").strip(), flags=re.I)
     base = re.sub(r"[/\\:]+", "-", base).strip(" .") or "chapter"
@@ -350,6 +363,8 @@ def chapter_filename(raw: str | None, index: int, total: int, used: set[str]) ->
         cand = f"{base} {n}"
         n += 1
     used.add(cand.lower())
+    if not prefix:
+        return f"{cand}.aac"
     return f"{str(index).zfill(len(str(total)))} {cand}.aac"
 
 
@@ -377,11 +392,12 @@ async def export(name: str, request: Request):
         clean.append({"name": (ch.get("name") or None), "start": round(s, 3), "end": round(e, 3),
                       "enabled": ch.get("enabled") is not False})
     todo = [ch for ch in clean if ch["enabled"]]
+    prefix = body.get("prefix", meta.get("prefix", True)) is not False
     if not todo:
         raise HTTPException(400, "every chapter is turned off")
 
     meta.update(gap=float(body.get("gap", meta["gap"])), noise=float(body.get("noise", meta["noise"])),
-                splits=splits, chapters=clean)
+                splits=splits, chapters=clean, prefix=prefix)
     src, dest = master(name), output_dir(name)
 
     def work(log):
@@ -389,7 +405,7 @@ async def export(name: str, request: Request):
         dest.mkdir(parents=True)
         used: set[str] = set()
         for i, ch in enumerate(todo):
-            fname = chapter_filename(ch["name"], i + 1, len(todo), used)
+            fname = chapter_filename(ch["name"], i + 1, len(todo), used, prefix)
             log(f"writing {fname} ({i + 1} of {len(todo)})...")
             r = run(["ffmpeg", "-y", "-v", "error", "-i", str(src),
                      "-ss", f"{ch['start']:.3f}", "-to", f"{ch['end']:.3f}",
@@ -458,4 +474,8 @@ if __name__ == "__main__":
     PROJECTS.mkdir(exist_ok=True)
     if not os.environ.get("BOOKY_NO_BROWSER"):
         threading.Timer(1.0, lambda: webbrowser.open(f"http://127.0.0.1:{PORT}")).start()
-    uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")
+    if os.environ.get("BOOKY_DEV"):  # restart on backend edits during development
+        uvicorn.run("booky:app", host="127.0.0.1", port=PORT, log_level="warning", reload=True,
+                    reload_includes=["booky.py"])
+    else:
+        uvicorn.run(app, host="127.0.0.1", port=PORT, log_level="warning")

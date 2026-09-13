@@ -8,7 +8,9 @@ must stay simple enough for a non-developer.
 ## Stack and conventions
 
 - `booky.py`: the whole backend. A uv single-file script (deps in the header), FastAPI + uvicorn
-  on `127.0.0.1:8765`, opens the browser on start. `BOOKY_NO_BROWSER=1` suppresses that.
+  on `127.0.0.1:8765`, opens the browser on start. Env: `BOOKY_NO_BROWSER=1` skips the browser,
+  `BOOKY_PORT` changes the port, `BOOKY_DEV=1` enables uvicorn reload. Without reload, backend
+  edits need a restart of the running app; static files are always served fresh.
 - `static/index.html`, `static/app.js`, `static/style.css`: the whole frontend. Vanilla JS,
   no framework, no build step, no npm. Keep it that way.
 - All audio work shells out to ffmpeg/ffprobe. Everything is stream copy (`-c copy`): download,
@@ -25,7 +27,7 @@ must stay simple enough for a non-developer.
 
 ```
 projects/<name>/              (gitignored)
-  project.json                saved state: url, fetched_at, duration, gap, noise, splits, chapters
+  project.json                saved state: url, fetched_at, duration, peak_db, gap, noise, splits, chapters, prefix
   source/source.aac           raw HLS download (ADTS)
   source/master.m4a           remuxed copy; raw ADTS seeks are inaccurate, the mp4 index is exact
   source/peaks.bin            waveform, one uint8 per 1/100 s
@@ -37,7 +39,10 @@ projects/<name>/              (gitignored)
 `start`/`end` are absolute trims inside the segment. `enabled: false` excludes a chapter from
 export and greys it out; a missing flag means enabled. Only exported chapters are numbered.
 
-Export filenames are `<n> <name>.aac`, `n` zero-padded only when there are 10+ chapters.
+Export filenames are `<n> <name>.aac`, `n` zero-padded only when there are 10+ chapters; the
+"number files" checkbox next to Export (`prefix`) turns the number off. `peak_db` is the loudest
+sample in dBFS (ffmpeg volumedetect), used to place the silence-threshold line on the waveform
+while the silence slider is dragged; it is computed lazily for projects that predate it.
 
 ## Save model (important)
 
@@ -62,7 +67,11 @@ Export filenames are `<n> <name>.aac`, `n` zero-padded only when there are 10+ c
 - Every action has a button; shortcuts are printed on the buttons. Undo is a stack of full
   state snapshots. Drags record one undo step, and only if something actually moved.
 - Theme: light/dark toggle in the sidebar footer, stored in localStorage. Canvas colours come
-  from CSS variables via `readTheme()`; never hardcode colours in `app.js`.
+  from CSS variables via `readTheme()`; never hardcode colours in `app.js`. Segments get a
+  colour from the `HUES` palette by index, used as tint on the main timeline and as the dot and
+  left border of the chapter card. Cards are not numbered; numbers exist only in export names.
+- The page itself never zooms: pinch, ⌘± and gesture events are swallowed outside the timelines.
+- Default detection: gap 3.0 s, silence -35 dB.
 
 ## Running and distributing
 

@@ -65,6 +65,8 @@ header { display: flex; gap: 10px; align-items: center; padding: 12px 20px; posi
          background: var(--panel); border-bottom: 1px solid var(--line); }
 header h1 { margin: 0; font-size: 18px; font-weight: 600; }
 .dirty { color: var(--sel); font-size: 12px; }
+label.check { display: flex; gap: 6px; align-items: center; color: var(--dim); font-size: 13px; cursor: pointer; }
+label.check input { accent-color: var(--ok); margin: 0; }
 #status { color: var(--dim); font-size: 13px; white-space: pre-wrap; }
 #status.err { color: var(--mark); }
 
@@ -102,7 +104,8 @@ input[type=range] { width: 160px; accent-color: var(--accent); padding: 0; borde
 .chap.off canvas, .chap.off .tools, .chap.off input.name { pointer-events: none; }
 .chap input.on { width: 16px; height: 16px; padding: 0; margin: 0; accent-color: var(--ok); cursor: pointer; }
 .chap .top { display: flex; gap: 10px; align-items: center; }
-.chap .idx { color: var(--dim); font-size: 12px; min-width: 22px; font-variant-numeric: tabular-nums; }
+.chap { border-left: 4px solid var(--seg, var(--line)); }
+.chap .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--seg); flex: none; }
 .chap input.name { flex: 1; min-width: 120px; background: var(--field2); }
 .chap .ext { color: var(--dim); font-size: 12px; margin-left: -6px; }
 .chap .meta { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }

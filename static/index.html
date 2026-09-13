@@ -27,6 +27,7 @@
         <div class="spacer"></div>
         <span id="status"></span>
         <button id="reveal" title="Open the project folder in Finder">Show in Finder</button>
+        <label class="check" title="prefix file names with 1, 2, 3 … in export order"><input type="checkbox" id="prefix" checked> number files</label>
         <button id="export" class="go" title="Write all chapters to disk">Export</button>
       </header>
 
@@ -59,7 +60,7 @@
         </div>
         <div class="row detect">
           <label class="slider">gap
-            <input type="range" id="gap" min="0.5" max="6" step="0.1" value="2"><b id="gapv">2.0s</b>
+            <input type="range" id="gap" min="0.5" max="6" step="0.1" value="3"><b id="gapv">3.0s</b>
           </label>
           <label class="slider">silence
             <input type="range" id="noise" min="-60" max="-10" step="1" value="-35"><b id="noisev">-35dB</b>
