@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import threading
+import unicodedata
 import uuid
 import webbrowser
 from datetime import datetime, timezone
@@ -39,14 +40,24 @@ JOBS: dict[str, dict] = {}
 # ---------------------------------------------------------------- project i/o
 
 def safe_name(name: str) -> str:
-    name = re.sub(r"[^A-Za-z0-9._ æøåÆØÅ-]+", "", (name or "").strip()).strip(" .")
+    """Any letters/digits plus space . _ -, in composed (NFC) form. macOS hands back folder
+    names in decomposed form (å = a + ring), so everything is normalised before comparing."""
+    name = unicodedata.normalize("NFC", name or "")
+    name = re.sub(r"[^\w. -]+", "", name.strip()).strip(" .")
     if not name:
         raise HTTPException(400, "invalid name")
     return name
 
 
 def pdir(name: str) -> Path:
-    return PROJECTS / safe_name(name)
+    name = safe_name(name)
+    direct = PROJECTS / name
+    if direct.exists() or not PROJECTS.exists():
+        return direct
+    for p in PROJECTS.iterdir():  # same name in another unicode normalisation
+        if unicodedata.normalize("NFC", p.name) == name:
+            return p
+    return direct
 
 
 def source_dir(name: str) -> Path:
@@ -273,7 +284,7 @@ def list_projects():
         if not p.is_dir() or p.name.startswith("."):
             continue
         meta = load_meta(p.name)
-        items.append({"name": p.name, "duration": meta.get("duration"),
+        items.append({"name": safe_name(p.name), "duration": meta.get("duration"),
                       "has_source": source_file(p.name).exists(),
                       "analyzed": analyzed(p.name)})
     return items
